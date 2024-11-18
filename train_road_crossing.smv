@@ -1,94 +1,69 @@
-MODULE TrafficLight(barrier_state)
-VAR 
-    state : {RED, YELLOW, GREEN};
+MODULE traffic_light(barrier_state)
+VAR
+    state : {red, yellow, green};
 
 ASSIGN
-    init(state) := GREEN;
+    init(state) := green;
     next(state) := case
-        barrier_state = DOWN : RED;
-        barrier_state = UP & state = RED : GREEN;
-        state = GREEN : YELLOW;
-        state = YELLOW : RED;
+        barrier_state = going_down : red;
+        barrier_state = down : red;
+        barrier_state = going_up : red;
+        barrier_state = up & state = red : {red, green};
+        state = green : {yellow, green};
+        state = yellow : red;
         TRUE : state;
     esac;
 
-MODULE Barrier(train_state, light_state)
-VAR 
-    state : {UP, DOWN, MOVING_DOWN, MOVING_UP};
+MODULE barrier(train_signal, traffic_light_state)
+VAR
+    state : {up, going_down, down, going_up};
+    counter : 0..10;
+    train_passed : boolean;
 
 ASSIGN
-    init(state) := UP;
+    init(state) := up;
+    init(counter) := 0;
+    init(train_passed) := FALSE;
+    next(train_passed) := case
+        train_signal = passed : TRUE;
+        state = up : FALSE;
+        TRUE : train_passed;
+    esac;
     next(state) := case
-        train_state = APPROACHING & state = UP & light_state = RED : MOVING_DOWN;
-        state = MOVING_DOWN : DOWN;
-        train_state = PASSED & state = DOWN : MOVING_UP;
-        state = MOVING_UP : UP;
+        state = up & train_signal = approaching & traffic_light_state = red : going_down;
+        state = going_down & counter < 10 : going_down;
+        state = going_down & counter = 10 : down;
+        state = down & train_signal = passed : going_up;
+        state = going_up & counter < 10 : going_up;
+        state = going_up & counter = 10 : up;
         TRUE : state;
     esac;
+    next(counter) := case
+        (state = going_down | state = going_up) & counter < 10 : counter + 1;
+        (state = going_down | state = going_up) & counter = 10 : 0;
+        TRUE : 0;
+    esac;
 
-MODULE TrainSignal(barrier_state, light_state)
-VAR 
-    state : {NO_TRAIN, APPROACHING, PASSING, PASSED};
+MODULE train(barrier_state)
+VAR
+    signal : {approaching, passing, absent, passed};
 
 ASSIGN
-    init(state) := NO_TRAIN;
-    next(state) := case
-        state = NO_TRAIN : APPROACHING;
-        state = APPROACHING & (barrier_state = MOVING_DOWN | barrier_state = DOWN) & light_state = RED : PASSING;
-        state = PASSING : PASSED;
-        state = PASSED & barrier_state = UP : NO_TRAIN;
-        TRUE : state;
+    init(signal) := absent;
+    next(signal) := case
+        signal = absent : {absent, approaching};
+        signal = approaching & barrier_state = down : passing;
+        signal = passing : passed;
+        signal = passed : absent;
+        TRUE : signal;
     esac;
 
 MODULE main
 VAR
-    train_signal : process TrainSignal(barrier.state, traffic_light.state);
-    barrier      : process Barrier(train_signal.state, traffic_light.state);
-    traffic_light: process TrafficLight(barrier.state);
+    train1 : process train(barrier1.state);
+    traffic_light1 : process traffic_light(barrier1.state);
+    barrier1 : process barrier(train1.signal, traffic_light1.state);
 
-
-
-
--- SPEC
-
--- SAFETY PROPERTIES
--- Barriers must eventually go down when the train is APPROACHING or PASSING
-SPEC AG ((train_signal.state = APPROACHING | train_signal.state = PASSING) -> AF barrier.state = DOWN)
-SPEC AG (train_signal.state = APPROACHING -> AF barrier.state = MOVING_DOWN)
-
-
--- No Green Light When Barriers Are Not Up
--- SPEC AG (barrier.state != UP -> traffic_light.state != GREEN)
-
--- Default Safe State During Emergency
--- SPEC AG (train_signal.state = NO_TRAIN -> traffic_light.state = RED & barrier.state = DOWN)
-
-
-
--- LIVENESS PROPERTIES
--- Barriers Will Eventually Go Down for an Approaching Train
--- SPEC AG (train_signal.state = APPROACHING -> AF barrier.state = DOWN)
-
--- Barriers Will Eventually Go Up After Train Passes
--- SPEC AG (train_signal.state = PASSED -> AF barrier.state = UP)
-
--- Traffic Light Will Eventually Turn Green After Safety Is Ensured
--- SPEC AG (barrier.state = UP -> AF traffic_light.state = GREEN)
-
-
-
--- DEADLOCK FREEDOM
--- System Never Stalls
--- SPEC AG EF TRUE
-
--- Train Will Eventually Leave
--- SPEC AG (train_signal.state != NO_TRAIN -> AF (train_signal.state = NO_TRAIN & barrier.state = UP))
-
-
-
--- PROGRESS PROPERTIES
--- Road Light Turns Red Before Barriers Go Down
--- SPEC AG (barrier.state = MOVING_DOWN -> traffic_light.state = RED)
-
--- Barriers Begin to Rise Only After Train Passes
--- SPEC AG (barrier.state = MOVING_UP -> train_signal.state = PASSED)
+SPEC AG (train1.signal = passing -> barrier1.state = down)
+SPEC AG (barrier1.state != up -> traffic_light1.state = red)
+LTLSPEC G (barrier1.state = going_down -> F (traffic_light1.state = red))
