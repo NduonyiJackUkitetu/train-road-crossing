@@ -1,10 +1,11 @@
-MODULE traffic_light(barrier_state)
+MODULE traffic_light(barrier_state, train_signal)
 VAR
     state : {red, yellow, green};
 
 ASSIGN
     init(state) := green;
     next(state) := case
+        train_signal = approaching : red;
         barrier_state = going_down : red;
         barrier_state = down : red;
         barrier_state = going_up : red;
@@ -61,9 +62,10 @@ ASSIGN
 MODULE main
 VAR
     train1 : process train(barrier1.state);
-    traffic_light1 : process traffic_light(barrier1.state);
+    traffic_light1 : process traffic_light(barrier1.state, train1.signal);
     barrier1 : process barrier(train1.signal, traffic_light1.state);
 
 SPEC AG (train1.signal = passing -> barrier1.state = down)
 SPEC AG (barrier1.state != up -> traffic_light1.state = red)
 LTLSPEC G (barrier1.state = going_down -> F (traffic_light1.state = red))
+SPEC AG ((train1.signal = approaching | train1.signal = passing) -> AF barrier1.state = down)
