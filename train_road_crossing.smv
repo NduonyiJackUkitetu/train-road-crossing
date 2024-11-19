@@ -84,3 +84,10 @@ SPEC AG (barrier1.state = going_up -> train1.signal = absent)
 -- Deadlock-Free Operation
 -- The system should never reach a deadlock state where no further actions can occur.
 SPEC AG AF TRUE
+
+-- Progress Requirements
+-- The barriers must eventually go down if the train is approaching
+
+-- The barriers must eventually go up once the train is passed.
+
+-- The road light should eventually turn green again when it is safe.
