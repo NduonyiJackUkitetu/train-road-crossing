@@ -87,7 +87,10 @@ SPEC AG AF TRUE
 
 -- Progress Requirements
 -- The barriers must eventually go down if the train is approaching
+SPEC AG (train1.signal = approaching -> AF barrier1.state = going_down)
 
 -- The barriers must eventually go up once the train is passed.
+SPEC AG (train1.signal = passing -> AF barrier1.state = going_up)
 
 -- The road light should eventually turn green again when it is safe.
+SPEC AG (barrier1.state = up -> AF traffic_light1.state = green)
