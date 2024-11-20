@@ -7,13 +7,11 @@ ASSIGN
     init(state) := green;
     next(state) := case
         emergency : red; -- Default to red in an emergency
-        train_signal = approaching : red;
-        barrier_state = going_down : red;
-        barrier_state = down : red;
-        barrier_state = going_up : red;
-        barrier_state = up & state = red & redcounter >= 5 : {red, green};
-        state = green : {yellow, green};
+        state = green & train_signal = absent & barrier_state = up : green;
+        state = green & train_signal = approaching : yellow;
         state = yellow : red;
+        state = red & redcounter < 5 : red;
+        state = red & train_signal = absent & barrier_state = up : green;
         TRUE : state;
     esac;
     next(redcounter) := case
@@ -31,12 +29,12 @@ ASSIGN
     init(state) := up;
     init(counter) := 0;
     next(state) := case
-        emergency & traffic_light_state = red : down; -- Default to down in an emergency
-        state = down & train_signal = absent : going_up;
+        emergency & traffic_light_state = red & state != down : down; -- Default to down in an emergency
         state = up & train_signal = approaching & traffic_light_state = red : going_down;
-        state = up & emergency & traffic_light_state = red : going_down;
+        state = down & train_signal = absent : going_up;
         state = going_down & counter < 10 : going_down;
         state = going_down & counter = 10 : down;
+        state = down & train_signal = absent : going_up;
         state = going_up & counter < 10 : going_up;
         state = going_up & counter = 10 : up;
         TRUE : state;
@@ -47,15 +45,16 @@ ASSIGN
         TRUE : 0;
     esac;
 
-MODULE train(barrier_state, emergency)
+MODULE train(barrier_state, traffic_light_state, emergency)
 VAR
     signal : {approaching, passing, absent};
 
 ASSIGN
     init(signal) := absent;
     next(signal) := case
-        emergency : absent; -- No train activity during emergency
-        signal = absent & barrier_state = up : {absent, approaching};
+        -- emergency : absent;
+        signal = absent & barrier_state = going_up : absent;
+        signal = absent & barrier_state = up &  traffic_light_state = green : approaching;
         signal = approaching & barrier_state = down : passing;
         signal = passing : absent;
         TRUE : signal;
@@ -64,20 +63,28 @@ ASSIGN
 MODULE main
 VAR
     emergency : boolean; -- Global emergency signal
-    train1 : process train(barrier1.state, emergency);
+    train1 : process train(barrier1.state, traffic_light1.state, emergency);
     traffic_light1 : process traffic_light(barrier1.state, train1.signal, emergency);
     barrier1 : process barrier(train1.signal, traffic_light1.state, emergency);
 
 ASSIGN
     init(emergency) := FALSE; -- Default is no emergency
-    next(emergency) := {TRUE, FALSE};
+    next(emergency) := {FALSE}; -- dre here w comment here
 
+FAIRNESS
+    train1.running
+
+FAIRNESS
+    traffic_light1.running
+
+FAIRNESS
+    barrier1.running
 
 -- Safety Requirements
 -- The barriers must be fully down before the train enters the crossing.
 SPEC AG (train1.signal = passing -> barrier1.state = down)
 -- The road light must be red whenever the barriers are not fully up.
-SPEC AG (barrier1.state != up -> traffic_light1.state = red)
+SPEC AG (barrier1.state = going_up -> traffic_light1.state = red)
 --- The barriers should not start going up until the train has completely passed.
 SPEC AG (barrier1.state = going_up -> train1.signal = absent)
 
@@ -87,10 +94,10 @@ SPEC AG AF TRUE
 
 -- Progress Requirements
 -- The barriers must eventually go down if the train is approaching
-SPEC AG (train1.signal = approaching -> AF barrier1.state = going_down)
+SPEC AG (train1.signal = approaching -> AF barrier1.state = down)
 
 -- The barriers must eventually go up once the train is passed.
-SPEC AG (train1.signal = passing -> AF barrier1.state = going_up)
+SPEC AG (train1.signal = absent -> AF barrier1.state = up)
 
--- The road light should eventually turn green again when it is safe.
-SPEC AG (barrier1.state = up -> AF traffic_light1.state = green)
+-- The road light should eventually turn green again when it is safe
+SPEC AG ((train1.signal = absent & barrier1.state = up) -> AF traffic_light1.state = green)
