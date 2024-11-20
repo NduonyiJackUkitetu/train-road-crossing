@@ -52,7 +52,7 @@ VAR
 ASSIGN
     init(signal) := absent;
     next(signal) := case
-        -- emergency : absent;
+        emergency : absent;
         signal = absent & barrier_state = going_up : absent;
         signal = absent & barrier_state = up &  traffic_light_state = green : approaching;
         signal = approaching & barrier_state = down : passing;
